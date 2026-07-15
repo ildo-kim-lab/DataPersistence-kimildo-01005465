@@ -27,6 +27,7 @@ class OrderController:
         if order is None or order.status != OrderStatus.RESERVED:
             return False, "거절할 수 없는 주문입니다."
         order.status = OrderStatus.REJECTED
+        self.order_repository.save()
         return True, order
 
     def approve_order(self, order_id):
@@ -38,10 +39,13 @@ class OrderController:
         if sample.stock >= order.quantity:
             sample.stock -= order.quantity
             order.status = OrderStatus.CONFIRMED
+            self.sample_repository.save()
+            self.order_repository.save()
             return True, order
 
         shortage = order.quantity - sample.stock
         order.status = OrderStatus.PRODUCING
         job = ProductionJob(order, sample, shortage)
         self.production_line.enqueue(job)
+        self.order_repository.save()
         return True, order
