@@ -42,7 +42,9 @@ from controller.order_controller import OrderController
   - `sample.py` / `order.py` — 단순 데이터 홀더. `Order`는 클래스 레벨 카운터로 증가하는
     `order_id`를 스스로 채번하며, `Sample.sample_id`는 사용자 입력값을 그대로 사용합니다.
   - `repository.py` — `SampleRepository`/`OrderRepository`. ID를 키로 하는 dict 기반
-    인메모리 저장소입니다. 디스크에 영속화하지 않으므로 프로세스를 재시작하면 상태가 초기화됩니다.
+    인메모리 저장소이며, 생성 시 `storage_path`(JSON 파일 경로)를 받으면 시작 시 그 파일에서
+    데이터를 로드하고 `add`/`update`/`delete` 등 변경이 있을 때마다 자동으로 다시 저장합니다.
+    자세한 내용은 아래 "데이터 영속성" 절을 참고하세요.
   - `production_line.py` — `ProductionLine`은 단일 FIFO 생산 라인을 모델링합니다(진행 중인
     작업 1건 + `deque`로 대기하는 나머지). `ProductionJob`은 다음을 계산합니다:
     `actual_quantity = ceil(shortage_quantity / sample.yield_rate)`,
@@ -75,10 +77,38 @@ from controller.order_controller import OrderController
   호출합니다. 새 기능을 추가할 때는 기존 코드에 손대기보다 여기서 새 controller+view 쌍을
   연결하는 방식을 따르세요.
 
+## 데이터 영속성
+
+시료/주문 데이터는 `data/samples.json`, `data/orders.json` (저장소 루트 기준, `main.py`의
+`DATA_DIR`/`SAMPLES_FILE`/`ORDERS_FILE`) JSON 파일로 영속화됩니다. `data/`는 런타임에
+생성되는 폴더로 `.gitignore`에 등록되어 있어 git으로 추적하지 않습니다.
+
+- `model/json_storage.py` — `load_json`/`save_json` 공통 유틸. 파일이 없으면 `load_json`이
+  기본값을 반환하고, `save_json`은 상위 디렉터리를 자동 생성한 뒤 `ensure_ascii=False,
+  indent=2`로 기록합니다.
+- `Sample`/`Order`에 `to_dict`/`from_dict`를 두어 JSON 직렬화/역직렬화를 담당합니다.
+  `Order.from_dict`는 저장된 `order_id`를 그대로 복원하면서, 그 값이 현재 클래스 카운터
+  `Order._next_id`보다 크거나 같으면 카운터를 이어받아 재시작 후에도 주문 번호가 겹치지
+  않도록 합니다.
+- `SampleRepository`/`OrderRepository`는 생성자에서 `storage_path`를 받아 즉시 `load()`하고,
+  `add`/`update`/`delete` 호출 시마다 내부적으로 `_save()`를 실행해 전체 컬렉션을 파일에
+  덮어씁니다. 즉 CRUD 각 동작(Create=`add`, Read=`get`/`list_all`/`search_by_name`,
+  Update=`update`, Delete=`delete`)이 저장 시점을 스스로 책임집니다.
+- 컨트롤러가 리포지토리 메서드를 거치지 않고 엔티티 객체를 직접 mutate하는 지점
+  (`order_controller.approve_order`/`reject_order`, `production_controller.
+  complete_current_job`, `release_controller.release_order`)에는 각각 명시적으로
+  `sample_repository.save()`/`order_repository.save()`를 호출해 상태 전이가 즉시
+  디스크에 반영되도록 했습니다.
+- **알려진 제한**: `ProductionLine`(현재 작업 + 대기 큐)은 여전히 메모리에만 존재하며 별도로
+  영속화하지 않습니다. `PRODUCING` 상태의 주문 자체는 재시작 후에도 유지되지만, 생산 큐의
+  진행 상황(현재 작업/대기열 순서)은 재시작 시 초기화됩니다.
+
 ## 상태 머신
 
 `RESERVED -> (승인) -> CONFIRMED | PRODUCING -> (생산 완료) -> CONFIRMED -> (출고) -> RELEASE`
 `RESERVED -> (거절) -> REJECTED` (종료 상태, 모니터링에서 제외)
 
-주문 ID는 `Order._next_id`를 통해 프로세스 전역으로 채번됩니다. 상태가 메모리에만 존재하므로
-프로세스를 재시작하면 주문 번호 체계와 재고/큐 상태가 모두 초기화됩니다.
+주문 ID는 `Order._next_id`를 통해 프로세스 전역으로 채번됩니다. 시료/주문 상태는 위
+"데이터 영속성" 절에 따라 JSON 파일에 저장되므로 프로세스를 재시작해도 재고, 주문 목록/상태,
+주문 번호 채번은 유지됩니다. 다만 `ProductionLine`의 현재 작업/대기 큐는 영속화 대상이
+아니므로 재시작 시 초기화됩니다.

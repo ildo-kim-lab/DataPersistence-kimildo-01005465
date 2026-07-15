@@ -11,6 +11,8 @@ class SampleView:
             print("1. 시료 등록")
             print("2. 시료 조회")
             print("3. 시료 검색")
+            print("4. 시료 수정")
+            print("5. 시료 삭제")
             print("0. 이전 메뉴")
             choice = read_input("선택> ")
             if choice == "1":
@@ -19,6 +21,10 @@ class SampleView:
                 self._list_samples()
             elif choice == "3":
                 self._search_samples()
+            elif choice == "4":
+                self._update_sample()
+            elif choice == "5":
+                self._delete_sample()
             elif choice == "0":
                 break
             else:
@@ -50,3 +56,28 @@ class SampleView:
             return
         for s in samples:
             print(f"{s.sample_id} | {s.name} | 재고 {s.stock}")
+
+    def _update_sample(self):
+        sample_id = read_input("수정할 시료 ID: ")
+        print("변경하지 않을 항목은 비워두고 Enter를 누르세요.")
+        name = read_input("새 이름: ") or None
+        avg_production_time = self._read_optional_float("새 평균 생산시간: ")
+        yield_rate = self._read_optional_float("새 수율(0~1): ")
+        ok, result = self.sample_controller.update_sample(
+            sample_id, name=name, avg_production_time=avg_production_time, yield_rate=yield_rate)
+        print(f"시료가 수정되었습니다: {result.sample_id} ({result.name})" if ok else result)
+
+    def _delete_sample(self):
+        sample_id = read_input("삭제할 시료 ID: ")
+        ok, result = self.sample_controller.delete_sample(sample_id)
+        print(f"시료가 삭제되었습니다: {result.sample_id} ({result.name})" if ok else result)
+
+    def _read_optional_float(self, prompt):
+        while True:
+            value = read_input(prompt)
+            if not value:
+                return None
+            try:
+                return float(value)
+            except ValueError:
+                print("숫자를 입력해주세요.")

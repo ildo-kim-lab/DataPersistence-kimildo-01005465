@@ -1,3 +1,5 @@
+import os
+
 from model.repository import SampleRepository, OrderRepository
 from model.production_line import ProductionLine
 
@@ -15,16 +17,21 @@ from view.production_view import ProductionView
 from view.main_view import MainView
 
 
+DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+SAMPLES_FILE = os.path.join(DATA_DIR, "samples.json")
+ORDERS_FILE = os.path.join(DATA_DIR, "orders.json")
+
+
 def main():
-    sample_repository = SampleRepository()
-    order_repository = OrderRepository()
+    sample_repository = SampleRepository(SAMPLES_FILE)
+    order_repository = OrderRepository(ORDERS_FILE)
     production_line = ProductionLine()
 
     sample_controller = SampleController(sample_repository)
     order_controller = OrderController(order_repository, sample_repository, production_line)
     monitoring_controller = MonitoringController(order_repository, sample_repository)
     release_controller = ReleaseController(order_repository)
-    production_controller = ProductionController(production_line, sample_repository)
+    production_controller = ProductionController(production_line, sample_repository, order_repository)
 
     sample_view = SampleView(sample_controller)
     order_view = OrderView(order_controller)

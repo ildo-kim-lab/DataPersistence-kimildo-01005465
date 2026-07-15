@@ -13,4 +13,5 @@ class ReleaseController:
         if order is None or order.status != OrderStatus.CONFIRMED:
             return False, "출고할 수 없는 주문입니다."
         order.status = OrderStatus.RELEASE
+        self.order_repository.save()
         return True, order
